@@ -124,7 +124,7 @@ public class Grep {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
 
-                    System.out.println("checking " + startPath.relativize(file));
+                    //System.out.println("checking " + startPath.relativize(file));
 
                     BufferedInputStream bis = new BufferedInputStream(new FileInputStream(file.toFile()));
                     int offset = 0;  // с какого места подчтывать новый кусок буфера
@@ -175,13 +175,13 @@ public class Grep {
                                         if (k < offset || k == 0) {
                                             // поместилось в буфер
                                             System.out.println(" @encoding: " + p.getValue());
-                                            int len = sep.getBytes(Charset.forName(p.getValue())).length;
+                                            //int len = sep.getBytes(Charset.forName(p.getValue())).length;
                                             System.arraycopy(text, k, text, 0, offset - k); // подвигаем
                                             offset -= k; // валидный кусок в начале, который мы не проверяли еще
                                             read = bis.read(text, offset, MY_BUFFER_SIZE - offset); // чтобы буфер был полный
                                             if (read != -1)
                                                 offset += read;
-                                            lineBeginPos = 0;
+                                            lineBeginPos = sep.getBytes(Charset.forName(p.getValue())).length;
                                             pi = -1; // начнем искать паттерны с самого начала
                                             cut = false;
                                             break; // while(true)
@@ -204,8 +204,8 @@ public class Grep {
                         }
 
                         // мы просканировали весь буфер кроме хвоста, но так ничего и не нашли.
-                        // подвинем хыост в начало, дочитаем сколько влезет и еще раз посмотрим.
-                        // НО! если в конце невалидные байты, сдвинем сколько есть и больше не трогает!!!!!!!!
+                        // подвинем хвост в начало, дочитаем сколько влезет и еще раз посмотрим.
+                        // НО! если в конце невалидные байты, сдвинем сколько есть и больше не трогаем!!!!!!!!
 
                         //если файл закончился и буфер забит не полностью концом файла
                         if (offset < MY_BUFFER_SIZE) {
@@ -243,7 +243,7 @@ public class Grep {
                                         System.out.println(" @encoding: " + p.getValue());
 
                                         int len = sep.getBytes(Charset.forName(p.getValue())).length;
-                                        //offset = offset - (k + len); // валидный кусок в начале, который мы не проверяли еще
+
                                         lineBeginPos = k + len;
                                         pi = -1; // начнем искать паттерны с самого начала
                                         cut = false;
@@ -270,7 +270,7 @@ public class Grep {
                 }
             });
         } catch (Exception e) {
-            System.out.println(IO_ERROR + "in Files");
+            System.out.println(IO_ERROR);
             System.exit(1);
         }
     }
