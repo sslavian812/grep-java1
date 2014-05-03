@@ -51,7 +51,6 @@ public class Grep {
             System.exit(1);
         }
 
-
         if (!FROM_CONSOLE.equals(args[0])) {       // command line args
             for (String arg : args) {
 
@@ -83,7 +82,6 @@ public class Grep {
             }
 
             if (n <= 0) System.exit(1);
-
 
             for (int i = 0; i < n; ++i) {
                 String line = null;
@@ -133,8 +131,8 @@ public class Grep {
                     byte[] text = new byte[MY_BUFFER_SIZE];  // буфер
                     int read; // сколько последний раз считалось
                     int nextNpos;
-                    String debug_string;
-                    String debug_string2;
+                    //String debug_string;
+                    //String debug_string2;
 
 
                     while ((read = bis.read(text, offset, MY_BUFFER_SIZE - offset)) != -1 || offset != 0) {
@@ -146,13 +144,13 @@ public class Grep {
                             Pair<byte[], String> p = patterns.get(pi);
                             nextNpos = findEnd(text, lineBeginPos, offset, p.getValue());
 
-                            debug_string = new String(text, Charset.forName(p.getValue()));
+//                            debug_string = new String(text, Charset.forName(p.getValue()));
 
 
                             // сканируем весь буффер кроме хвоста
                             for (int i = lineBeginPos; i < offset - MAX_PATTERN_LENGTH; ++i) {
                                 boolean flag = true;
-                                debug_string2 = sub(text, lineBeginPos, nextNpos, p.getValue());
+                                //                              debug_string2 = sub(text, lineBeginPos, nextNpos, p.getValue());
                                 // проверяем, что конкретный паттерн найдется
                                 for (int j = 0; j < p.getKey().length; ++j) {
                                     if (text[i + j] != p.getKey()[j] || i + j >= offset) {
@@ -160,8 +158,7 @@ public class Grep {
                                         break;
                                     }
                                 }
-                                if (flag) // found pattern p at position i
-                                {
+                                if (flag) {
                                     System.out.print(startPath.relativize(file) + ": ");
                                     if (cut) {
                                         System.out.print("...");
@@ -229,8 +226,7 @@ public class Grep {
                                             break;
                                         }
                                     }
-                                    if (flag) // found pattern p at position i
-                                    {
+                                    if (flag) {
                                         System.out.print(startPath.relativize(file) + ": ");
                                         if (cut) {
                                             System.out.print("...");
