@@ -32,7 +32,6 @@ public class Grep {
     private static int MY_BUFFER_SIZE = 8 * 1024;
 
     private static String sep = System.lineSeparator();
-    private static int sepsize = sep.length();
 
     private static ArrayList<Pair<byte[], String>> patterns;
 
@@ -125,30 +124,38 @@ public class Grep {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
 
+                    System.out.println("checking " + startPath.relativize(file));
+
                     BufferedInputStream bis = new BufferedInputStream(new FileInputStream(file.toFile()));
-                    int startOffset = 0;  // с какого места подчтывать новый кусок буфера
+                    int offset = 0;  // с какого места подчтывать новый кусок буфера
                     int lineBeginPos = 0; // с какого места начать сканировать
                     boolean cut = false; // правда ли что строка была разорвана и назад пути нет
                     byte[] text = new byte[MY_BUFFER_SIZE];  // буфер
                     int read; // сколько последний раз считалось
                     int nextNpos;
+                    String debug_string;
+                    String debug_string2;
 
 
-                    while ((read = bis.read(text, startOffset, MY_BUFFER_SIZE - startOffset)) != -1 || startOffset != 0) {
-                        // перебираем паттерны
+                    while ((read = bis.read(text, offset, MY_BUFFER_SIZE - offset)) != -1 || offset != 0) {
                         if (read == -1)
                             read = 0;
+                        offset += read;
+                        // перебираем паттерны
                         for (int pi = 0; pi < patterns.size(); ++pi) {
                             Pair<byte[], String> p = patterns.get(pi);
-                            nextNpos = findEnd(text, lineBeginPos, read + startOffset, p.getValue());
+                            nextNpos = findEnd(text, lineBeginPos, offset, p.getValue());
+
+                            debug_string = new String(text, Charset.forName(p.getValue()));
+
 
                             // сканируем весь буффер кроме хвоста
-                            for (int i = lineBeginPos; i < startOffset + read - MAX_PATTERN_LENGTH; ++i) {
+                            for (int i = lineBeginPos; i < offset - MAX_PATTERN_LENGTH; ++i) {
                                 boolean flag = true;
-
+                                debug_string2 = sub(text, lineBeginPos, nextNpos, p.getValue());
                                 // проверяем, что конкретный паттерн найдется
                                 for (int j = 0; j < p.getKey().length; ++j) {
-                                    if (text[i + j] != p.getKey()[j] || i + j >= startOffset + read) {
+                                    if (text[i + j] != p.getKey()[j] || i + j >= offset) {
                                         flag = false;
                                         break;
                                     }
@@ -159,38 +166,39 @@ public class Grep {
                                     if (cut) {
                                         System.out.print("...");
                                     }
-                                    int pos = i;
+                                    int pos = i; // позиция, с которой нашлась строка
                                     // выведем его до символа \N, а потом подвинем вначало и прочитаем еще
                                     while (true) {
-                                        int k = findEnd(text, pos, read + startOffset, p.getValue());
+                                        int k = findEnd(text, pos, offset, p.getValue());
                                         System.out.print(sub(text, lineBeginPos, k, p.getValue()));
 
-                                        if (k < read + startOffset) // поместилось в буфер
-                                        {
+                                        if (k < offset || k == 0) {
+                                            // поместилось в буфер
                                             System.out.println(" @encoding: " + p.getValue());
                                             int len = sep.getBytes(Charset.forName(p.getValue())).length;
-                                            System.arraycopy(text, k + len, text, 0, startOffset + read - (k + len)); // подвигаем
-                                            startOffset = read + startOffset - (k + len); // валидный кусок в начале, который мы не проверяли еще
-                                            read = bis.read(text, startOffset, MY_BUFFER_SIZE - startOffset); // чтобы буфер был полный
-
+                                            System.arraycopy(text, k, text, 0, offset - k); // подвигаем
+                                            offset -= k; // валидный кусок в начале, который мы не проверяли еще
+                                            read = bis.read(text, offset, MY_BUFFER_SIZE - offset); // чтобы буфер был полный
+                                            if (read != -1)
+                                                offset += read;
                                             lineBeginPos = 0;
                                             pi = -1; // начнем искать паттерны с самого начала
                                             cut = false;
                                             break; // while(true)
-                                        } else // длинная
-                                        {
+                                        } else {
+                                            // длинная
                                             read = bis.read(text, 0, MY_BUFFER_SIZE);
-                                            startOffset = 0;
+                                            offset = Math.max(read, 0);
                                             lineBeginPos = 0;
-                                            pos = lineBeginPos;
+                                            pos = 0;
                                         }
                                     }
                                     break; // сканирование всего буфера кроме хвоста
                                     // pi снова будет 0, и мы просканируем новый буфер снова для каждого паттерна
                                 } else if (i == nextNpos) {
-                                    i += sep.getBytes(Charset.forName(p.getValue())).length;
-                                    lineBeginPos = i;
-                                    nextNpos = findEnd(text, i, read + startOffset, p.getValue());
+                                    i += sep.getBytes(Charset.forName(p.getValue())).length - 1;
+                                    lineBeginPos = i + 1;
+                                    nextNpos = findEnd(text, i, offset, p.getValue());
                                 }
                             }
                         }
@@ -200,27 +208,23 @@ public class Grep {
                         // НО! если в конце невалидные байты, сдвинем сколько есть и больше не трогает!!!!!!!!
 
                         //если файл закончился и буфер забит не полностью концом файла
-                        if (read + startOffset != MY_BUFFER_SIZE) {
-                            if (read + startOffset >= MY_BUFFER_SIZE - MAX_PATTERN_LENGTH) {
-                                System.arraycopy(text, MY_BUFFER_SIZE - MAX_PATTERN_LENGTH, text, 0, startOffset + read - (MY_BUFFER_SIZE - MAX_PATTERN_LENGTH)); // подвигаем
-                                startOffset = startOffset + read - (MY_BUFFER_SIZE - MAX_PATTERN_LENGTH); // валидный кусок в начале, который мы не проверяли еще
-                            } else {
-                                startOffset = startOffset + read;
-                                if (read == -1)
-                                    ++startOffset;
+                        if (offset < MY_BUFFER_SIZE) {
+                            if (offset >= MY_BUFFER_SIZE - MAX_PATTERN_LENGTH) {
+                                System.arraycopy(text, MY_BUFFER_SIZE - MAX_PATTERN_LENGTH, text, 0, offset - (MY_BUFFER_SIZE - MAX_PATTERN_LENGTH)); // подвигаем
+                                offset -= (MY_BUFFER_SIZE - MAX_PATTERN_LENGTH); // валидный кусок в начале, который мы не проверяли еще
                             }
 
                             lineBeginPos = 0;
                             for (int pi = 0; pi < patterns.size(); ++pi) {
                                 Pair<byte[], String> p = patterns.get(pi);
-                                nextNpos = findEnd(text, 0, startOffset, p.getValue());
+                                nextNpos = findEnd(text, 0, offset, p.getValue());
 
                                 // сканируем весь буффер
-                                for (int i = lineBeginPos; i < startOffset; ++i) {
+                                for (int i = lineBeginPos; i < offset; ++i) {
                                     boolean flag = true;
                                     // проверяем, что конкретный паттерн найдется
                                     for (int j = 0; j < p.getKey().length; ++j) {
-                                        if (text[i + j] != p.getKey()[j] || i + j >= startOffset) {
+                                        if (text[i + j] != p.getKey()[j] || i + j >= offset) {
                                             flag = false;
                                             break;
                                         }
@@ -234,31 +238,30 @@ public class Grep {
                                         int pos = i;
                                         // выведем его до нулевого символа, а потом подвинем в начало
 
-                                        int k = findEnd(text, pos, startOffset, p.getValue());
+                                        int k = findEnd(text, pos, offset, p.getValue());
                                         System.out.print(sub(text, lineBeginPos, k, p.getValue()));
-
-
                                         System.out.println(" @encoding: " + p.getValue());
-                                        lineBeginPos = k;
-                                        startOffset = startOffset - (k + 1); // валидный кусок в начале, который мы не проверяли еще
+
+                                        int len = sep.getBytes(Charset.forName(p.getValue())).length;
+                                        //offset = offset - (k + len); // валидный кусок в начале, который мы не проверяли еще
+                                        lineBeginPos = k + len;
                                         pi = -1; // начнем искать паттерны с самого начала
                                         cut = false;
-                                        break; // сканирование всего буфера кроме хвоста
+                                        break; // сканирование всего отстального буфера
                                         // pi снова будет 0, и мы просканируем новый буфер снова для каждого паттерна
                                     }
 
                                     if (i == nextNpos) {
-                                        i += sep.getBytes(Charset.forName(p.getValue())).length;
-                                        lineBeginPos = i;
-                                        nextNpos = findEnd(text, i, startOffset, p.getValue());
+                                        i += sep.getBytes(Charset.forName(p.getValue())).length - 1;
+                                        lineBeginPos = i + 1;
+                                        nextNpos = findEnd(text, i, offset, p.getValue());
                                     }
                                 }
                             }
                             break;
-
                         } else {
                             System.arraycopy(text, MY_BUFFER_SIZE - MAX_PATTERN_LENGTH, text, 0, MAX_PATTERN_LENGTH); // подвигаем
-                            startOffset = MAX_PATTERN_LENGTH; // валидный кусок в начале, который мы не проверяли еще
+                            offset = MAX_PATTERN_LENGTH; // валидный кусок в начале, который мы не проверяли еще
                             lineBeginPos = 0;
                             cut = true;
                         }
@@ -278,8 +281,10 @@ public class Grep {
         for (int i = begin + 1; i < end - sepsize + 1; ++i) {
             boolean flag = true;
             for (int j = 0; j < sepsize; ++j) {
-                if (t[i + j] != sepbytes[j])
+                if (t[i + j] != sepbytes[j]) {
                     flag = false;
+                    break;
+                }
             }
             if (flag)
                 return i;
